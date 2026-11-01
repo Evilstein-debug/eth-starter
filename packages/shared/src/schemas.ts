@@ -41,3 +41,33 @@ export const healthResponseSchema = z.object({
   blockNumber: z.string(),
 })
 export type HealthResponse = z.infer<typeof healthResponseSchema>
+
+/** Activity feed: human-readable server log of chain events and API requests. */
+export const activityEntrySchema = z.object({
+  id: z.number(),
+  timestamp: z.string(),
+  kind: z.enum(['chain', 'request', 'admin']),
+  message: z.string(),
+  txHash: z.string().optional(),
+  requestId: z.string().optional(),
+  blockNumber: z.string().optional(),
+})
+export type ActivityEntry = z.infer<typeof activityEntrySchema>
+
+export const activityResponseSchema = z.object({ entries: z.array(activityEntrySchema) })
+export type ActivityResponse = z.infer<typeof activityResponseSchema>
+
+/** A decimal amount typed by a human, e.g. "12.5". Converted with the token's decimals. */
+export const decimalStringSchema = z.string().regex(/^\d+(\.\d+)?$/, 'Expected a decimal number')
+
+// Admin endpoints (local anvil only).
+export const adminOraclePriceSchema = z.object({ price: decimalStringSchema })
+export const adminMintSchema = z.object({ to: addressSchema, amount: decimalStringSchema })
+export const adminFundEthSchema = z.object({ to: addressSchema, eth: decimalStringSchema })
+export const adminTimeTravelSchema = z.object({
+  seconds: z
+    .number()
+    .int()
+    .positive()
+    .max(10 * 365 * 24 * 3600),
+})
