@@ -7,10 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./chains": "./src/chains.ts",
-    "./contracts": "./src/contracts.ts",
-    "./schemas": "./src/schemas.ts",
-    "./generated": "./src/generated.ts",
-    "./erc20": "./src/erc20.ts"
+    "./generated": "./src/generated.ts"
   },
   "scripts": {
     "codegen": "wagmi generate",
@@ -20,8 +17,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "viem": "2.57.14",
-    "zod": "4.6.7"
+    "viem": "2.57.14"
   },
   "devDependencies": {
     "@types/node": "20.19.43",

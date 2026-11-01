@@ -5,7 +5,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { defineConfig, type Plugin } from '@wagmi/cli'
+import { defineConfig } from '@wagmi/cli'
 import { foundry } from '@wagmi/cli/plugins'
 import { isAddress, type Address } from 'viem'
 
@@ -33,28 +33,11 @@ function readDeployments(): Record<string, Record<number, Address>> {
     >
     const chainId = Number(json.chainId)
     for (const [name, value] of Object.entries(json)) {
-      if (name === 'deployer' || typeof value !== 'string' || !isAddress(value)) continue
+      if (typeof value !== 'string' || !isAddress(value)) continue
       ;(result[name] ??= {})[chainId] = value
     }
   }
   return result
-}
-
-// Emits `contractRegistry` (real Solidity names + ABI + addresses) for tools like the Debug page.
-function registry(): Plugin {
-  return {
-    name: 'Registry',
-    run: ({ contracts }) => ({
-      content: [
-        'export const contractRegistry = [',
-        ...contracts.map(
-          ({ name, meta }) =>
-            `  { name: '${name}', abi: ${meta.abiName}, addresses: ${meta.addressName ?? '{}'} },`,
-        ),
-        '] as const',
-      ].join('\n'),
-    }),
-  }
 }
 
 export default defineConfig({
@@ -63,11 +46,10 @@ export default defineConfig({
     foundry({
       project: CONTRACTS_DIR,
       include: solidityFiles(join(CONTRACTS_DIR, 'src')).map((file) => `${file}/**`),
-      // `include` already limits output to src/. The plugin's default excludes would also drop
-      // our MockERC20.sol (it guards against forge-std's file of the same name).
+      // `include` already limits output to src/; the plugin's default excludes would also drop
+      // any of our files that share a name with forge-std's (e.g. MockERC20.sol).
       exclude: [],
       deployments: readDeployments(),
     }),
-    registry(),
   ],
 })

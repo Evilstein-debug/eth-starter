@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { explorerTxUrl, getChain, parseChainId, resolveRpcUrl } from './chains'
-import { addressSchema, bigintStringSchema } from './schemas'
 
 test('parseChainId defaults to local anvil and rejects unknown chains', () => {
   assert.equal(parseChainId(undefined), 31337)
@@ -19,11 +18,4 @@ test('explorer links exist only where an explorer is configured', () => {
   const hash = `0x${'ab'.repeat(32)}` as const
   assert.equal(explorerTxUrl(getChain(31337), hash), undefined)
   assert.match(explorerTxUrl(getChain(11155111), hash)!, /\/tx\/0xabab/)
-})
-
-test('schemas normalize addresses and parse bigint strings', () => {
-  const lower = '0x' + 'a'.repeat(40)
-  assert.equal(addressSchema.parse(lower).toLowerCase(), lower)
-  assert.equal(bigintStringSchema.parse('1000000'), 1_000_000n)
-  assert.throws(() => bigintStringSchema.parse('-1'))
 })

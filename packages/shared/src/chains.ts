@@ -57,3 +57,8 @@ export function explorerAddressUrl(chain: Chain, address: Address): string | und
   const base = chain.blockExplorers?.default.url
   return base ? `${base}/address/${address}` : undefined
 }
+
+/** Look up a generated `xxxAddress` map for a chain; undefined if not deployed there. */
+export function addressOn(addresses: Partial<Record<number, Address>>, chainId: number) {
+  return addresses[chainId]
+}
