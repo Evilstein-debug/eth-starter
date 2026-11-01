@@ -1,12 +1,15 @@
 /**
  * `pnpm dev`: the whole local stack with zero external keys.
  *   1. start anvil (or reuse one on :8545)
- *   2. deploy contracts + regenerate typed ABIs/addresses
+ *   2. deploy contracts, regenerate typed ABIs/addresses, seed demo wallets, snapshot
  *   3. run apps/server and apps/web against chain 31337
  * For a testnet, use `pnpm dev:testnet` with each app's .env pointing at it.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createTestClient, http } from 'viem'
+import { anvil as anvilChain } from 'viem/chains'
 import { deployLocal, ensureAnvil, LOCAL_RPC_URL, ROOT } from './lib/local'
+import { seed } from './seed'
 
 const children: ChildProcess[] = []
 
@@ -41,14 +44,26 @@ function startApp(name: string, filter: string, env: NodeJS.ProcessEnv) {
 const anvil = await ensureAnvil()
 if (anvil) children.push(anvil)
 
+let snapshotId = ''
 try {
   await deployLocal()
+  await seed()
+  // /admin "reset" reverts to this point: contracts deployed, demo wallets funded.
+  snapshotId = await createTestClient({
+    mode: 'anvil',
+    chain: anvilChain,
+    transport: http(LOCAL_RPC_URL),
+  }).snapshot()
 } catch (error) {
-  console.error('[dev] deploy failed:', error)
+  console.error('[dev] deploy/seed failed:', error)
   shutdown(1)
 }
 
-startApp('server', '@starter/server', { CHAIN_ID: '31337', RPC_URL: LOCAL_RPC_URL })
+startApp('server', '@starter/server', {
+  CHAIN_ID: '31337',
+  RPC_URL: LOCAL_RPC_URL,
+  ANVIL_SNAPSHOT_ID: snapshotId,
+})
 startApp('web', '@starter/web', {
   NEXT_PUBLIC_CHAIN_ID: '31337',
   NEXT_PUBLIC_RPC_URL: LOCAL_RPC_URL,
