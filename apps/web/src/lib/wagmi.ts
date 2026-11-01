@@ -1,20 +1,14 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
-import { isLocalChain, SUPPORTED_CHAINS } from '@starter/shared/chains'
+import { isLocalChain } from '@starter/shared/chains'
 import type { Chain, Transport } from 'viem'
 import { createConfig, http } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { targetChain, targetRpcUrl, walletConnectProjectId } from './env'
 
-// The active chain goes first so it is the default; the rest stay switchable.
-const chains = [targetChain, ...SUPPORTED_CHAINS.filter((c) => c.id !== targetChain.id)] as [
-  Chain,
-  ...Chain[],
-]
-
-const transports: Record<number, Transport> = Object.fromEntries(
-  chains.map((c) => [c.id, http(c.id === targetChain.id ? targetRpcUrl : undefined)]),
-)
-
+// One active chain per deployment (NEXT_PUBLIC_CHAIN_ID). A wallet on any other network is
+// "wrong network", and the connect button offers to switch.
+const chains: [Chain] = [targetChain]
+const transports: Record<number, Transport> = { [targetChain.id]: http(targetRpcUrl) }
 // Local anvil mines instantly; poll receipts fast there.
 const pollingInterval = isLocalChain(targetChain.id) ? 500 : undefined
 

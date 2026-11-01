@@ -1,19 +1,29 @@
 'use client'
 
 import '@rainbow-me/rainbowkit/styles.css'
-import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
+import { darkTheme, lightTheme, RainbowKitProvider } from '@rainbow-me/rainbowkit'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { WagmiProvider } from 'wagmi'
-import { targetChain } from '@/lib/env'
 import { wagmiConfig } from '@/lib/wagmi'
+
+// Square, monochrome wallet modal to match the app.
+const theme = {
+  lightMode: lightTheme({ borderRadius: 'none', accentColor: '#0a0a0a', fontStack: 'system' }),
+  darkMode: darkTheme({
+    borderRadius: 'none',
+    accentColor: '#fafafa',
+    accentColorForeground: '#0a0a0a',
+    fontStack: 'system',
+  }),
+}
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider initialChain={targetChain}>{children}</RainbowKitProvider>
+        <RainbowKitProvider theme={theme}>{children}</RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   )
