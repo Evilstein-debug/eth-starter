@@ -1,15 +1,26 @@
 import { serve } from '@hono/node-server'
-import { isLocalChain } from '@starter/shared/chains'
-import { initAdmin } from './admin'
-import { app } from './app'
-import { chain, rpcUrl } from './chain'
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { chain, publicClient, rpcUrl } from './chain'
 import { env } from './env'
-import { startWatcher } from './watcher'
+import { listFeed, startFeed } from './feed'
 
-if (isLocalChain(chain.id)) await initAdmin()
-startWatcher()
+// Put anything here that shouldn't run in the browser (secrets, indexing, webhooks, ...).
+const app = new Hono()
+app.use('*', cors({ origin: env.corsOrigins }))
 
-serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+app.get('/health', async (c) => {
+  const blockNumber = await publicClient.getBlockNumber()
+  return c.json({ ok: true, chainId: chain.id, blockNumber: blockNumber.toString() })
+})
+
+app.get('/api/feed', (c) => {
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 100)
+  return c.json({ entries: listFeed(limit) })
+})
+
+startFeed()
+serve({ fetch: app.fetch, port: env.port }, (info) => {
   console.log(
     `[server] http://localhost:${info.port} · chain ${chain.id} (${chain.name}) · rpc ${rpcUrl}`,
   )
