@@ -4,6 +4,7 @@ import { mockErc20Abi, simpleEscrowAbi } from '@starter/shared/generated'
 import { useState } from 'react'
 import { formatUnits, isAddress, parseUnits } from 'viem'
 import { useAccount, useReadContracts } from 'wagmi'
+import { ActivityFeed } from '@/components/activity-feed'
 import { ApproveGate } from '@/components/approve-gate'
 import { TxButton } from '@/components/tx-button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -117,6 +118,10 @@ export default function Home() {
           )}
         </CardContent>
       </Card>
+
+      <div className="md:col-span-2">
+        <ActivityFeed />
+      </div>
     </div>
   )
 }
