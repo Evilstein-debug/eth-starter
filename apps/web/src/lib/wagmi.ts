@@ -1,5 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
-import { SUPPORTED_CHAINS } from '@starter/shared/chains'
+import { isLocalChain, SUPPORTED_CHAINS } from '@starter/shared/chains'
 import type { Chain, Transport } from 'viem'
 import { createConfig, http } from 'wagmi'
 import { injected } from 'wagmi/connectors'
@@ -15,6 +15,9 @@ const transports: Record<number, Transport> = Object.fromEntries(
   chains.map((c) => [c.id, http(c.id === targetChain.id ? targetRpcUrl : undefined)]),
 )
 
+// Local anvil mines instantly; poll receipts fast there.
+const pollingInterval = isLocalChain(targetChain.id) ? 500 : undefined
+
 function makeConfig() {
   if (walletConnectProjectId) {
     return getDefaultConfig({
@@ -23,6 +26,7 @@ function makeConfig() {
       chains,
       transports,
       ssr: true,
+      pollingInterval,
     })
   }
   if (typeof window !== 'undefined') {
@@ -32,7 +36,7 @@ function makeConfig() {
     )
   }
   // Browser wallets announced via EIP-6963 are discovered automatically; injected() is the fallback.
-  return createConfig({ chains, transports, connectors: [injected()], ssr: true })
+  return createConfig({ chains, transports, connectors: [injected()], ssr: true, pollingInterval })
 }
 
 export const wagmiConfig = makeConfig()
