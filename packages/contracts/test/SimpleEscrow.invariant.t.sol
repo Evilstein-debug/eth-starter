@@ -3,35 +3,29 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {SimpleEscrow} from "../src/SimpleEscrow.sol";
-import {MockERC20} from "../src/mocks/MockERC20.sol";
 
 /// @dev The fuzzer calls these functions in random order with random inputs.
 contract EscrowHandler is Test {
     SimpleEscrow public immutable escrow;
-    MockERC20 public immutable token;
     address[] public actors;
     uint256[] public openIds;
 
-    constructor(SimpleEscrow escrow_, MockERC20 token_) {
+    constructor(SimpleEscrow escrow_) {
         escrow = escrow_;
-        token = token_;
         for (uint256 i; i < 3; i++) {
-            address actor = makeAddr(string.concat("actor", vm.toString(i)));
-            actors.push(actor);
-            vm.prank(actor);
-            token.approve(address(escrow), type(uint256).max);
+            actors.push(makeAddr(string.concat("actor", vm.toString(i))));
         }
     }
 
     function create(uint256 actorSeed, uint128 amount, uint64 ttl) external {
         address payer = actors[actorSeed % actors.length];
         address payee = actors[(actorSeed + 1) % actors.length];
-        amount = uint128(bound(amount, 1, 1_000_000e6));
+        amount = uint128(bound(amount, 1, 1_000 ether));
         ttl = uint64(bound(ttl, 1, 30 days));
 
-        token.mint(payer, amount);
+        vm.deal(payer, payer.balance + amount);
         vm.prank(payer);
-        openIds.push(escrow.create(payee, amount, uint64(block.timestamp) + ttl));
+        openIds.push(escrow.create{value: amount}(payee, uint64(block.timestamp) + ttl));
     }
 
     function release(uint256 idSeed) external {
@@ -61,18 +55,16 @@ contract EscrowHandler is Test {
 
 contract SimpleEscrowInvariantTest is Test {
     SimpleEscrow escrow;
-    MockERC20 token;
     EscrowHandler handler;
 
     function setUp() public {
-        token = new MockERC20("Mock USD", "mUSD");
-        escrow = new SimpleEscrow(token);
-        handler = new EscrowHandler(escrow, token);
+        escrow = new SimpleEscrow();
+        handler = new EscrowHandler(escrow);
         targetContract(address(handler));
     }
 
-    /// @notice The escrow always holds exactly the tokens it has accounted for.
+    /// @notice The escrow always holds exactly the ETH it has accounted for.
     function invariant_balanceMatchesTotalLocked() public view {
-        assertEq(token.balanceOf(address(escrow)), escrow.totalLocked());
+        assertEq(address(escrow).balance, escrow.totalLocked());
     }
 }
