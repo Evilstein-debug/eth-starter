@@ -1,70 +1,72 @@
 /**
  * `pnpm e2e:happy`: the source of truth that the stack works, before touching UI.
- * Runs the full path the way the web app does (simulate → send → wait for receipt):
- *   deploy → mint → approve → escrow.create → server calls → verify state → release → permit
+ * Runs the path the web app runs (simulate → send → wait for receipt):
+ *   deploy → escrow.create → server feed sees it → verify state → escrow.release → verify payout
  *
  * Local (default): starts anvil, deploys and starts the server if they are not already running.
- * Testnet: set CHAIN_ID/RPC_URL/SERVER_URL and DEMO_ALICE/BOB keys in the root .env, deploy
- * first, and run the server against the same chain.
+ * Testnet: set CHAIN_ID, RPC_URL, SERVER_URL and E2E_PRIVATE_KEY in the root .env, deploy first,
+ * and run the server against the same chain.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import {
-  signPermit,
-  submitPermit,
-  ensureAllowance,
-  getTokenInfo,
-  toTokenUnits,
-  getAllowance,
-} from '@starter/shared/erc20'
-import { mockErc20Abi, simpleEscrowAbi } from '@starter/shared/generated'
+  addressOn,
+  getChain,
+  isLocalChain,
+  parseChainId,
+  resolveRpcUrl,
+} from '@starter/shared/chains'
+import { simpleEscrowAbi, simpleEscrowAddress } from '@starter/shared/generated'
 import {
-  activityResponseSchema,
-  healthResponseSchema,
-  verifySignatureResponseSchema,
-} from '@starter/shared/schemas'
-import { parseEventLogs, type Address, type Hash, type Log } from 'viem'
-import { deployLocal, ensureAnvil, LOCAL_RPC_URL, ROOT, waitFor } from './lib/local'
-import {
-  chain,
-  demoWallet,
-  isDeployed,
-  isLocal,
-  publicClient,
-  requireAddress,
-  serverUrl,
-  step,
-  type Wallet,
-} from './lib/target'
+  createPublicClient,
+  createWalletClient,
+  http,
+  isHex,
+  parseEther,
+  parseEventLogs,
+  type Hex,
+} from 'viem'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { anvilAccount, deployLocal, ensureAnvil, LOCAL_RPC_URL, ROOT, waitFor } from './lib/local'
 
+const chainId = parseChainId(process.env.CHAIN_ID)
+const chain = getChain(chainId)
+const isLocal = isLocalChain(chainId)
+const rpcUrl = resolveRpcUrl(chain, process.env.RPC_URL)
+const serverUrl = process.env.SERVER_URL || 'http://localhost:8787'
+const pollingInterval = isLocal ? 200 : undefined
+const AMOUNT = parseEther(process.env.E2E_AMOUNT || (isLocal ? '1' : '0.0001'))
+
+const publicClient = createPublicClient({ chain, transport: http(rpcUrl), pollingInterval })
 const started: ChildProcess[] = []
-const AMOUNT = '25'
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Assertion failed: ${message}`)
 }
 
-async function health() {
+function step(label: string) {
+  const start = Date.now()
+  console.log(`• ${label}`)
+  return (detail = '') => console.log(`  ✓ ${detail ? `${detail} ` : ''}(${Date.now() - start}ms)`)
+}
+
+async function health(): Promise<{ chainId: number } | undefined> {
   try {
     const res = await fetch(`${serverUrl}/health`)
-    return healthResponseSchema.parse(await res.json())
+    return res.ok ? ((await res.json()) as { chainId: number }) : undefined
   } catch {
     return undefined
   }
 }
 
-/** Same sequence as the web app's useTransaction hook. */
-async function send(
-  wallet: Wallet,
-  request: Parameters<typeof publicClient.simulateContract>[0],
-): Promise<{ hash: Hash; logs: Log[] }> {
-  const { request: simulated } = await publicClient.simulateContract({
-    ...request,
-    account: wallet.account,
-  })
-  const hash = await wallet.writeContract(simulated as Parameters<Wallet['writeContract']>[0])
-  const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  assert(receipt.status === 'success', `tx ${hash} reverted`)
-  return { hash, logs: receipt.logs }
+/** Payer signs; on anvil it is dev account #1, elsewhere E2E_PRIVATE_KEY (a throwaway key). */
+function payerAccount() {
+  const key = process.env.E2E_PRIVATE_KEY
+  if (key) {
+    assert(isHex(key) && key.length === 66, 'E2E_PRIVATE_KEY must be a 0x-prefixed 32-byte hex key')
+    return privateKeyToAccount(key as Hex)
+  }
+  assert(isLocal, `set E2E_PRIVATE_KEY (a funded throwaway ${chain.name} key) in the root .env`)
+  return anvilAccount(1).account
 }
 
 async function setup() {
@@ -75,8 +77,9 @@ async function setup() {
     if (anvil) started.push(anvil)
     done()
 
-    const contracts = [requireAddress('MockERC20'), requireAddress('SimpleEscrow')]
-    if (!(await isDeployed(contracts))) {
+    const address = addressOn(simpleEscrowAddress, chainId)
+    const code = address && (await publicClient.getCode({ address }))
+    if (!code || code === '0x') {
       done = step('deploy (fresh chain)')
       await deployLocal()
       done()
@@ -84,17 +87,17 @@ async function setup() {
 
     if (!(await health())) {
       done = step('start server')
-      const server = spawn('pnpm', ['--filter', '@starter/server', 'start'], {
-        cwd: ROOT,
-        env: { ...process.env, CHAIN_ID: '31337', RPC_URL: LOCAL_RPC_URL },
-        stdio: 'ignore',
-      })
-      started.push(server)
+      started.push(
+        spawn('pnpm', ['--filter', '@starter/server', 'start'], {
+          cwd: ROOT,
+          env: { ...process.env, CHAIN_ID: '31337', RPC_URL: LOCAL_RPC_URL },
+          stdio: 'ignore',
+        }),
+      )
       await waitFor(async () => Boolean(await health()), 'server', 30_000)
       done()
     }
   }
-
   const status = await health()
   assert(status, `server not reachable at ${serverUrl}`)
   assert(status.chainId === chain.id, `server is on chain ${status.chainId}, expected ${chain.id}`)
@@ -102,143 +105,92 @@ async function setup() {
 
 async function run() {
   await setup()
-  const token = requireAddress('MockERC20')
-  const escrow = requireAddress('SimpleEscrow')
-  assert(await isDeployed([token, escrow]), 'contracts are not deployed at the generated addresses')
+  const escrow = addressOn(simpleEscrowAddress, chainId)
+  assert(escrow, `SimpleEscrow has no address for chain ${chainId}; deploy and run pnpm codegen`)
 
-  const alice = demoWallet('alice')
-  const bob = demoWallet('bob')
-  const info = await getTokenInfo(publicClient, token)
-  const amount = toTokenUnits(AMOUNT, info)
-  const balanceOf = (who: Address) =>
-    publicClient.readContract({
-      address: token,
-      abi: mockErc20Abi,
-      functionName: 'balanceOf',
-      args: [who],
-    })
-
-  let done = step(`mint ${AMOUNT} ${info.symbol} to alice`)
-  const aliceBefore = await balanceOf(alice.account.address)
-  await send(alice, {
-    address: token,
-    abi: mockErc20Abi,
-    functionName: 'mint',
-    args: [alice.account.address, amount],
+  const payer = createWalletClient({
+    account: payerAccount(),
+    chain,
+    transport: http(rpcUrl),
+    pollingInterval,
   })
-  assert(
-    (await balanceOf(alice.account.address)) === aliceBefore + amount,
-    'alice balance after mint',
-  )
-  done()
+  const payee = isLocal
+    ? anvilAccount(2).account.address
+    : privateKeyToAccount(generatePrivateKey()).address
 
-  // Like the UI's ApproveGate: approve only when the allowance is too low.
-  done = step('approve escrow')
-  const approval = await ensureAllowance(publicClient, alice, token, escrow, amount)
-  assert(
-    (await getAllowance(publicClient, token, alice.account.address, escrow)) >= amount,
-    'allowance',
-  )
-  done(approval ? '' : '(already approved)')
-
-  done = step('escrow.create (alice → bob)')
-  const escrowBefore = await balanceOf(escrow)
+  let done = step(`escrow.create: ${AMOUNT} wei from ${payer.account.address} to ${payee}`)
   const deadline = (await publicClient.getBlock()).timestamp + 3600n
-  const created = await send(alice, {
+  const { request } = await publicClient.simulateContract({
+    account: payer.account,
     address: escrow,
     abi: simpleEscrowAbi,
     functionName: 'create',
-    args: [bob.account.address, amount, deadline],
+    args: [payee, deadline],
+    value: AMOUNT,
   })
-  const [event] = parseEventLogs({
+  const createHash = await payer.writeContract(request)
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: createHash })
+  assert(receipt.status === 'success', `create reverted (${createHash})`)
+  const [created] = parseEventLogs({
     abi: simpleEscrowAbi,
     eventName: 'DealCreated',
-    logs: created.logs,
+    logs: receipt.logs,
   })
-  assert(event, 'DealCreated event emitted')
-  const dealId = event.args.id
-  done(`deal #${dealId} ${created.hash}`)
+  assert(created, 'DealCreated emitted')
+  const dealId = created.args.id
+  done(`deal #${dealId} ${createHash}`)
 
-  done = step('server: verify wallet signature')
-  const message = `e2e:happy ${Date.now()}`
-  const signature = await alice.signMessage({ message })
-  const res = await fetch(`${serverUrl}/api/verify-signature`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ address: alice.account.address, message, signature }),
-  })
-  const verified = verifySignatureResponseSchema.parse(await res.json())
-  assert(verified.valid, 'server accepted the signature')
-  done(`request ${verified.requestId}`)
-
-  done = step('server: activity feed saw DealCreated')
+  done = step('server feed saw DealCreated')
   await waitFor(
     async () => {
-      const feed = activityResponseSchema.parse(
-        await (await fetch(`${serverUrl}/api/activity?limit=200`)).json(),
-      )
-      return feed.entries.some(
-        (e) => e.txHash === created.hash && e.message.includes('DealCreated'),
-      )
+      const res = await fetch(`${serverUrl}/api/feed?limit=100`)
+      const { entries } = (await res.json()) as { entries: { txHash: string }[] }
+      return entries.some((e) => e.txHash === createHash)
     },
-    'DealCreated in activity feed',
+    'DealCreated in the server feed',
     20_000,
   )
   done()
 
   done = step('verify onchain state')
-  const [payer, payee, locked, , status] = await publicClient.readContract({
+  const [dealPayer, dealPayee, amount, , status] = await publicClient.readContract({
     address: escrow,
     abi: simpleEscrowAbi,
     functionName: 'deals',
     args: [dealId],
   })
-  assert(payer === alice.account.address && payee === bob.account.address, 'deal parties')
-  assert(locked === amount && status === 1, 'deal amount and Open status')
-  assert((await balanceOf(escrow)) === escrowBefore + amount, 'escrow holds the tokens')
+  assert(dealPayer === payer.account.address && dealPayee === payee, 'deal parties')
+  assert(amount === AMOUNT && status === 1, 'deal amount and Open status')
   done()
 
-  done = step('escrow.release → bob')
-  const bobBefore = await balanceOf(bob.account.address)
-  await send(alice, {
+  done = step('escrow.release → payee')
+  const before = await publicClient.getBalance({ address: payee })
+  const release = await publicClient.simulateContract({
+    account: payer.account,
     address: escrow,
     abi: simpleEscrowAbi,
     functionName: 'release',
     args: [dealId],
   })
-  assert((await balanceOf(bob.account.address)) === bobBefore + amount, 'bob received the tokens')
-  done()
-
-  done = step('EIP-2612 permit (alice signs, bob submits)')
-  const permitValue = toTokenUnits('1', info)
-  const permit = await signPermit(publicClient, alice, {
-    token,
-    spender: bob.account.address,
-    value: permitValue,
-    deadline: deadline + 3600n,
-  })
-  await submitPermit(publicClient, bob, token, permit)
+  const releaseHash = await payer.writeContract(release.request)
   assert(
-    (await getAllowance(publicClient, token, alice.account.address, bob.account.address)) ===
-      permitValue,
-    'permit allowance',
+    (await publicClient.waitForTransactionReceipt({ hash: releaseHash })).status === 'success',
+    `release reverted (${releaseHash})`,
   )
-  done()
+  assert((await publicClient.getBalance({ address: payee })) === before + AMOUNT, 'payee was paid')
+  done(releaseHash)
 
   console.log('\n✅ e2e:happy passed')
 }
 
-function cleanup() {
-  for (const child of started) child.kill('SIGTERM')
-}
-
+const cleanup = () => started.forEach((child) => child.kill('SIGTERM'))
 run()
   .then(() => {
     cleanup()
     process.exit(0)
   })
   .catch((error) => {
-    console.error('\n\n❌ e2e:happy failed:', error instanceof Error ? error.message : error)
+    console.error('\n❌ e2e:happy failed:', error instanceof Error ? error.message : error)
     cleanup()
     process.exit(1)
   })

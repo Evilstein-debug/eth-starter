@@ -9,7 +9,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8545 tsx --env-file-if-exists=.env scripts/dev.ts",
+    "dev": "tsx scripts/dev.ts",
     "dev:testnet": "pnpm --parallel --filter @starter/server --filter @starter/web dev",
     "test": "pnpm -r --if-present test",
     "lint": "pnpm -r --if-present --no-bail lint && eslint scripts",
@@ -20,7 +20,6 @@
     "build:contracts": "pnpm --filter @starter/contracts build",
     "deploy:local": "pnpm --filter @starter/contracts deploy:local && pnpm codegen",
     "deploy:sepolia": "pnpm --filter @starter/contracts deploy:sepolia && pnpm codegen",
-    "seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "e2e:happy": "tsx --env-file-if-exists=.env scripts/e2e-happy.ts"
   },
   "devDependencies": {

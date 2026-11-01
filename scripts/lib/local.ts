@@ -1,4 +1,4 @@
-/** Helpers for the local anvil chain, shared by dev, seed and e2e scripts. */
+/** Helpers for the local anvil chain, shared by the dev and e2e scripts. */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync, openSync } from 'node:fs'
 import { resolve } from 'node:path'
