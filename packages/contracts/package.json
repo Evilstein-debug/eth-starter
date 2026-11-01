@@ -7,8 +7,8 @@
     "build": "forge build",
     "test": "forge test",
     "fmt": "forge fmt",
-    "deploy:local": "forge script script/Deploy.s.sol --rpc-url ${RPC_URL:-http://127.0.0.1:8545} --broadcast",
-    "deploy:sepolia": "forge script script/Deploy.s.sol --rpc-url ${SEPOLIA_RPC_URL:?set SEPOLIA_RPC_URL in packages/contracts/.env} --broadcast"
+    "deploy:local": "forge script script/Deploy.s.sol --rpc-url localhost --broadcast --private-key $(cast wallet private-key 'test test test test test test test test test test test junk')",
+    "deploy:sepolia": "forge script script/Deploy.s.sol --rpc-url sepolia --broadcast --account ${DEPLOYER_ACCOUNT:-deployer}"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.6.1",
