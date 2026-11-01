@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { parseEther, type Abi, type AbiFunction, type Address } from 'viem'
-import { useConfig } from 'wagmi'
+import { useConfig, useReadContract } from 'wagmi'
 import { readContract } from 'wagmi/actions'
 import { TxStatus } from '@/components/tx-status'
 import { Badge } from '@/components/ui/badge'
@@ -74,7 +74,26 @@ function FunctionForm({ fn, abi, address }: { fn: AbiFunction; abi: Abi; address
   const [result, setResult] = useState<string>()
   const { state, send, isBusy } = useTransaction()
 
+  // Zero-argument reads load automatically and refresh on "Read".
+  const autoRead = isRead && fn.inputs.length === 0
+  const auto = useReadContract({
+    address,
+    abi,
+    functionName: fn.name,
+    chainId: targetChain.id,
+    query: { enabled: autoRead },
+  })
+  const autoResult = auto.error
+    ? `Error: ${describeError(auto.error)}`
+    : auto.data !== undefined
+      ? formatAbiResult(auto.data)
+      : undefined
+
   async function run() {
+    if (autoRead) {
+      void auto.refetch()
+      return
+    }
     setResult(undefined)
     let args: unknown[]
     try {
@@ -107,12 +126,6 @@ function FunctionForm({ fn, abi, address }: { fn: AbiFunction; abi: Abi; address
     }
   }
 
-  // Zero-argument reads load automatically.
-  useEffect(() => {
-    if (isRead && fn.inputs.length === 0) void run()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center gap-2">
@@ -137,9 +150,9 @@ function FunctionForm({ fn, abi, address }: { fn: AbiFunction; abi: Abi; address
       <Button size="sm" variant={isRead ? 'secondary' : 'default'} disabled={isBusy} onClick={run}>
         {isRead ? 'Read' : 'Send'}
       </Button>
-      {result !== undefined && (
+      {(autoRead ? autoResult : result) !== undefined && (
         <pre className="bg-muted overflow-x-auto rounded p-2 text-xs whitespace-pre-wrap">
-          {result}
+          {autoRead ? autoResult : result}
         </pre>
       )}
       {!isRead && <TxStatus state={state} />}
