@@ -63,6 +63,9 @@ export default defineConfig({
     foundry({
       project: CONTRACTS_DIR,
       include: solidityFiles(join(CONTRACTS_DIR, 'src')).map((file) => `${file}/**`),
+      // `include` already limits output to src/. The plugin's default excludes would also drop
+      // our MockERC20.sol (it guards against forge-std's file of the same name).
+      exclude: [],
       deployments: readDeployments(),
     }),
     registry(),
