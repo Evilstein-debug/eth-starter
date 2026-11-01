@@ -7,6 +7,8 @@ const schema = z.object({
     .url()
     .optional()
     .or(z.literal('').transform(() => undefined)),
+  /** Set by `pnpm dev`: anvil snapshot that /admin/reset reverts to. */
+  ANVIL_SNAPSHOT_ID: z.string().optional(),
   PORT: z.coerce.number().int().default(8787),
   CORS_ORIGIN: z
     .string()
