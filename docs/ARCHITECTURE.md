@@ -1,7 +1,6 @@
 # Architecture
 
-How the starter template fits together. When your product diverges, update the diagram in the
-README; keep this file as the map of the plumbing.
+How the template fits together: where code lives, how data flows, and what to edit to swap a part.
 
 ```mermaid
 flowchart LR
@@ -22,7 +21,7 @@ flowchart LR
     WALLET["RainbowKit + wagmi"]
   end
 
-  subgraph server["apps/server (Hono)"]
+  subgraph server["apps/server (Express)"]
     API["/health · /api/feed"]
     FEED["feed.ts<br/>polls escrow events"]
   end
@@ -62,7 +61,7 @@ The hook simulates first (so revert reasons show before the wallet prompt), asks
 sign, waits for the receipt, then refreshes all reads. `TxStatus` shows each stage and an
 explorer link.
 
-**Server.** Hono on Node. `feed.ts` polls `SimpleEscrow` logs with `eth_getLogs` over a block
+**Server.** Express 5 on Node. `feed.ts` polls `SimpleEscrow` logs with `eth_getLogs` over a block
 cursor and keeps the latest 100 entries in memory; `/api/feed` serves them. Put anything that
 must not run in the browser here (secrets, indexing, webhooks).
 

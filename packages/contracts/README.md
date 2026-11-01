@@ -40,7 +40,7 @@ Sepolia:
 3. From the repo root: `pnpm deploy:sepolia` (prompts for the keystore password, then runs
    `pnpm codegen` so the web app and server pick up the new address).
 4. Commit `packages/shared/deployments/11155111.json` and `packages/shared/src/generated.ts`,
-   and add the address to the README's "Deployed addresses" table.
+   so everyone gets the new address.
 
 Use a different keystore name with `DEPLOYER_ACCOUNT=myname pnpm deploy:sepolia`.
 
