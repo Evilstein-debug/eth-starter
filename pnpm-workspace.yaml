@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Keep one viem across wagmi/RainbowKit/WalletConnect so types line up.
+overrides:
+  viem: 2.57.14
+
+onlyBuiltDependencies:
+  - esbuild
